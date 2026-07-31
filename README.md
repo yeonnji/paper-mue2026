@@ -50,15 +50,75 @@ git clone --recursive -b baseline <이 저장소 URL>
 
 ## 설치
 
-원본 3DGS와 동일하게 submodule을 포함해 clone하고, conda 환경을 구성합니다.
+### 사전 요구사항
+
+- NVIDIA GPU (CUDA 12.1 지원)
+- Miniconda 또는 Anaconda
+
+### 1. 저장소 클론
 
 ```bash
 git clone --recursive <이 저장소 URL>
-conda env create --file environment.yml
-conda activate gaussian_splatting
+cd gs_endo
 ```
 
-CUDA/컴파일러 요구사항, submodule 빌드 트러블슈팅 등은 [원본 3DGS README](https://github.com/graphdeco-inria/gaussian-splatting#readme)를 참고하세요.
+### 2. Conda 환경 구성
+
+```bash
+conda create -n gs_endo python=3.10 -y
+conda activate gs_endo
+```
+
+### 3. PyTorch 설치 (CUDA 12.1)
+
+```bash
+conda install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=12.1 -c pytorch -c nvidia
+```
+
+### 4. Python 패키지 설치
+
+```bash
+pip install tqdm lpips plyfile matplotlib natsort pytorch_ssim pytorch_msssim imageio[ffmpeg] openexr
+```
+
+### 5. Submodule 설치
+
+```bash
+pip install submodules/diff-gaussian-rasterization/
+pip install submodules/simple-knn/
+pip install submodules/fused-ssim/
+```
+
+> 컴파일 오류 발생 시 CUDA 버전과 PyTorch 버전이 일치하는지 확인하세요. 자세한 트러블슈팅은 [원본 3DGS README](https://github.com/graphdeco-inria/gaussian-splatting#readme)를 참고하세요.
+
+## 데이터셋 준비
+
+C3VD 데이터셋을 [EndoGSLAM](https://github.com/EndoGSLAM/EndoGSLAM)으로 전처리한 버전을 사용합니다. [PR-ENDO](https://github.com/SanoScience/PR-ENDO)와 동일한 데이터를 Zenodo에서 다운로드할 수 있습니다.
+
+**다운로드**: [http://zenodo.org/records/15732143](http://zenodo.org/records/15732143)
+
+다운로드 후 아래 구조로 배치합니다.
+
+```
+dataset/
+└── C3VD/
+    ├── cecum_t1_b/
+    ├── cecum_t2_b/
+    ├── cecum_t3_a/
+    ├── sigmoid_t1_a/
+    ├── sigmoid_t2_a/
+    ├── sigmoid_t3_a/
+    ├── trans_t1_b/
+    ├── trans_t2_c/
+    ├── trans_t4_a/
+    └── trans_t4_b/
+```
+
+`run_endo.sh`의 `base_path` 변수를 실제 데이터 경로에 맞게 수정하세요.
+
+```bash
+base_path="../dataset/C3VD"  # 실제 경로로 변경
+```
 
 ## 실행 방법
 
