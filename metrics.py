@@ -5,130 +5,143 @@ import json
 from statistics import mean, stdev
 
 # Regular expressions to match lines in results.txt
-# Supports both BASE and FINAL metrics, and old format for backward compat
-iter_avg_pattern_base = re.compile(
-    r"\[ITER (\d+)\] test BASE\s+avg: L1 ([\d.]+) PSNR ([\d.]+) LPIPS ([\d.]+) SSIM ([\d.]+) MSSIM ([\d.]+)"
-)
-iter_std_pattern_base = re.compile(
-    r"\[ITER (\d+)\] test BASE\s+std: L1 ([\d.]+) PSNR ([\d.]+) LPIPS ([\d.]+) SSIM ([\d.]+) MSSIM ([\d.]+)"
-)
-iter_avg_pattern_final = re.compile(
-    r"\[ITER (\d+)\] test FINAL avg: L1 ([\d.]+) PSNR ([\d.]+) LPIPS ([\d.]+) SSIM ([\d.]+) MSSIM ([\d.]+)"
-)
-iter_std_pattern_final = re.compile(
-    r"\[ITER (\d+)\] test FINAL std: L1 ([\d.]+) PSNR ([\d.]+) LPIPS ([\d.]+) SSIM ([\d.]+) MSSIM ([\d.]+)"
-)
-# Old format fallback
-iter_avg_pattern_old = re.compile(
+iter_avg_pattern = re.compile(
     r"\[ITER (\d+)\] Evaluating test avg: L1 ([\d.]+) PSNR ([\d.]+) LPIPS ([\d.]+) SSIM ([\d.]+) MSSIM ([\d.]+)"
 )
-iter_std_pattern_old = re.compile(
+iter_std_pattern = re.compile(
     r"\[ITER (\d+)\] Evaluating test std: L1 ([\d.]+) PSNR ([\d.]+) LPIPS ([\d.]+) SSIM ([\d.]+) MSSIM ([\d.]+)"
 )
 
-def _parse_matches(avg_matches, std_matches):
-    """Parse matched tuples into per-iteration dict."""
-    data = {}
-    for avg_match, std_match in zip(avg_matches, std_matches):
-        iter_num_avg, l1_avg, psnr_avg, lpips_avg, ssim_avg, mssim_avg = avg_match
-        iter_num_std, l1_std, psnr_std, lpips_std, ssim_std, mssim_std = std_match
-        assert iter_num_avg == iter_num_std, "Mismatch in iteration numbers for avg and std lines."
-        iter_num = int(iter_num_avg)
-        data[iter_num] = {
-            "L1": (float(l1_avg), float(l1_std)),
-            "PSNR": (float(psnr_avg), float(psnr_std)),
-            "LPIPS": (float(lpips_avg), float(lpips_std)),
-            "SSIM": (float(ssim_avg), float(ssim_std)),
-            "MSSIM": (float(mssim_avg), float(mssim_std)),
-        }
-    return data
-
 def extract_metrics(base_dir):
-    all_iterations = set()
-    run_metrics_base = []
-    run_metrics_final = []
+    # Dictionaries to store metrics for each iteration across all runs
+    iter_psnrs = {}
+    iter_psnr_stds = {}
+    iter_lpipss = {}
+    iter_lpips_stds = {}
+    iter_ssims = {}
+    iter_ssim_stds = {}
+    iter_mssims = {}
+    iter_mssim_stds = {}
+    iter_l1s = {}
+    iter_l1_stds = {}
 
+    # Gather all iterations across all runs
+    all_iterations = set()
+    run_metrics = []
+
+    # Process each subfolder
     for subdir in os.listdir(base_dir):
         results_path = os.path.join(base_dir, subdir, "results.txt")
-        if not os.path.isfile(results_path):
-            continue
-        with open(results_path, "r") as file:
-            content = file.read()
+        
+        # Check if results.txt exists in the current subdir
+        if os.path.isfile(results_path):
+            with open(results_path, "r") as file:
+                content = file.read()
+                
+                # Find iteration lines for avg and std metrics
+                avg_matches = iter_avg_pattern.findall(content)
+                std_matches = iter_std_pattern.findall(content)
 
-        # Try new format first
-        avg_base = iter_avg_pattern_base.findall(content)
-        std_base = iter_std_pattern_base.findall(content)
-        avg_final = iter_avg_pattern_final.findall(content)
-        std_final = iter_std_pattern_final.findall(content)
+                # Extract metrics for this run
+                run_data = {}
+                for avg_match, std_match in zip(avg_matches, std_matches):
+                    iter_num_avg, l1_avg, psnr_avg, lpips_avg, ssim_avg, mssim_avg = avg_match
+                    iter_num_std, l1_std, psnr_std, lpips_std, ssim_std, mssim_std = std_match
+                    
+                    # Ensure iteration numbers match in avg and std lines
+                    assert iter_num_avg == iter_num_std, "Mismatch in iteration numbers for avg and std lines."
 
-        if avg_base and std_base:
-            base_data = _parse_matches(avg_base, std_base)
-        else:
-            # Fallback to old format
-            avg_old = iter_avg_pattern_old.findall(content)
-            std_old = iter_std_pattern_old.findall(content)
-            base_data = _parse_matches(avg_old, std_old) if avg_old and std_old else {}
+                    iter_num = int(iter_num_avg)
+                    all_iterations.add(iter_num)  # Add to global set of iterations
+                    run_data[iter_num] = {
+                        "L1": (float(l1_avg), float(l1_std)),
+                        "PSNR": (float(psnr_avg), float(psnr_std)),
+                        "LPIPS": (float(lpips_avg), float(lpips_std)),
+                        "SSIM": (float(ssim_avg), float(ssim_std)),
+                        "MSSIM": (float(mssim_avg), float(mssim_std)),
+                    }
+                
+                # Store run data for backfilling later
+                run_metrics.append(run_data)
 
-        final_data = _parse_matches(avg_final, std_final) if avg_final and std_final else {}
-
-        for it in base_data:
-            all_iterations.add(it)
-        for it in final_data:
-            all_iterations.add(it)
-
-        run_metrics_base.append(base_data)
-        run_metrics_final.append(final_data if final_data else base_data)
-
+    # Sort all iterations in ascending order
     all_iterations = sorted(all_iterations)
-    return all_iterations, run_metrics_base, run_metrics_final
 
-def _aggregate(run_metrics_list, all_iterations):
-    result = {}
+    # Process each iteration and backfill missing values for each run
     for iter_num in all_iterations:
-        values = {"PSNR": [], "LPIPS": [], "SSIM": [], "MSSIM": [], "L1": []}
-        for run_data in run_metrics_list:
-            available = sorted(k for k in run_data if k <= iter_num)
-            if available:
-                m = run_data[available[-1]]
-                for k in values:
-                    values[k].append(m[k][0])
-        if values["PSNR"]:
-            result[iter_num] = {}
-            for k in values:
-                vals = values[k]
-                result[iter_num][k] = (mean(vals), stdev(vals) if len(vals) > 1 else 0.0)
-    return result
+        # Collect metric values for this iteration across all runs
+        psnr_values, psnr_std_values = [], []
+        lpips_values, lpips_std_values = [], []
+        ssim_values, ssim_std_values = [], []
+        mssim_values, mssim_std_values = [], []
+        l1_values, l1_std_values = [], []
 
-def save_results(base_dir, all_iterations, run_metrics_base, run_metrics_final):
-    base_agg = _aggregate(run_metrics_base, all_iterations)
-    final_agg = _aggregate(run_metrics_final, all_iterations)
-    has_final = any(final_agg.get(it, {}).get("PSNR", (0,0)) != base_agg.get(it, {}).get("PSNR", (0,0))
-                    for it in all_iterations)
+        for run_data in run_metrics:
+            # Find the latest iteration <= iter_num in this run
+            available_iters = sorted(k for k in run_data.keys() if k <= iter_num)
+            if available_iters:
+                latest_iter = available_iters[-1]  # Get latest available iteration for this run
+                metrics = run_data[latest_iter]
 
+                # Append metrics to lists for averaging
+                psnr_values.append(metrics["PSNR"][0])
+                psnr_std_values.append(metrics["PSNR"][1])
+                lpips_values.append(metrics["LPIPS"][0])
+                lpips_std_values.append(metrics["LPIPS"][1])
+                ssim_values.append(metrics["SSIM"][0])
+                ssim_std_values.append(metrics["SSIM"][1])
+                mssim_values.append(metrics["MSSIM"][0])
+                mssim_std_values.append(metrics["MSSIM"][1])
+                l1_values.append(metrics["L1"][0])
+                l1_std_values.append(metrics["L1"][1])
+
+        # Calculate mean and std values for this iteration
+        if psnr_values:
+            iter_psnrs[iter_num] = (mean(psnr_values), stdev(psnr_values) if len(psnr_values) > 1 else 0)
+            iter_psnr_stds[iter_num] = (mean(psnr_std_values), stdev(psnr_std_values) if len(psnr_std_values) > 1 else 0)
+        if lpips_values:
+            iter_lpipss[iter_num] = (mean(lpips_values), stdev(lpips_values) if len(lpips_values) > 1 else 0)
+            iter_lpips_stds[iter_num] = (mean(lpips_std_values), stdev(lpips_std_values) if len(lpips_std_values) > 1 else 0)
+        if ssim_values:
+            iter_ssims[iter_num] = (mean(ssim_values), stdev(ssim_values) if len(ssim_values) > 1 else 0)
+            iter_ssim_stds[iter_num] = (mean(ssim_std_values), stdev(ssim_std_values) if len(ssim_std_values) > 1 else 0)
+        if mssim_values:
+            iter_mssims[iter_num] = (mean(mssim_values), stdev(mssim_values) if len(mssim_values) > 1 else 0)
+            iter_mssim_stds[iter_num] = (mean(mssim_std_values), stdev(mssim_std_values) if len(mssim_std_values) > 1 else 0)
+        if l1_values:
+            iter_l1s[iter_num] = (mean(l1_values), stdev(l1_values) if len(l1_values) > 1 else 0)
+            iter_l1_stds[iter_num] = (mean(l1_std_values), stdev(l1_std_values) if len(l1_std_values) > 1 else 0)
+
+    return iter_psnrs, iter_lpipss, iter_ssims, iter_mssims, iter_l1s, iter_psnr_stds, iter_lpips_stds, iter_ssim_stds, iter_mssim_stds, iter_l1_stds
+
+def save_results(base_dir, iter_psnrs, iter_lpipss, iter_ssims, iter_mssims, iter_l1s, iter_psnr_stds, iter_lpips_stds, iter_ssim_stds, iter_mssim_stds, iter_l1_stds):
+    # Save all values and mean/std values to mean_results.txt
     results_path = os.path.join(base_dir, "mean_results.txt")
     with open(results_path, "w") as file:
         file.write("Mean and Std Values per Iteration:\n")
 
-        for metric_name in ["PSNR", "LPIPS", "SSIM", "MSSIM", "L1"]:
-            file.write(f"\n{metric_name} per Iteration (BASE):\n")
-            for it in all_iterations:
-                if it in base_agg and metric_name in base_agg[it]:
-                    m, s = base_agg[it][metric_name]
-                    file.write(f"Iteration {it}: Mean = {m:.4f}, Std Dev = {s:.4f}\n")
-
-            if has_final:
-                file.write(f"\n{metric_name} per Iteration (FINAL = base+spec):\n")
-                for it in all_iterations:
-                    if it in final_agg and metric_name in final_agg[it]:
-                        m, s = final_agg[it][metric_name]
-                        file.write(f"Iteration {it}: Mean = {m:.4f}, Std Dev = {s:.4f}\n")
-
-    print(f"Results saved to {results_path}")
+        # Write results with mean and std for each metric
+        for metric_name, mean_data, std_data in [
+            ("PSNR", iter_psnrs, iter_psnr_stds), 
+            ("LPIPS", iter_lpipss, iter_lpips_stds),
+            ("SSIM", iter_ssims, iter_ssim_stds),
+            ("MSSIM", iter_mssims, iter_mssim_stds),
+            ("L1", iter_l1s, iter_l1_stds)
+        ]:
+            file.write(f"\n{metric_name} per Iteration:\n")
+            for iter_num in mean_data.keys():
+                mean_val, std_dev = mean_data[iter_num]
+                std_mean, std_std = std_data[iter_num]
+                file.write(f"Iteration {iter_num}: Mean = {mean_val:.4f}, Std Dev = {std_dev:.4f}, Std (Mean) = {std_mean:.4f}, Std (Std Dev) = {std_std:.4f}\n")
 
 if __name__ == "__main__":
+    # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Extract and compute mean and std values from results.txt files.")
     parser.add_argument("base_dir", type=str, help="Base directory containing subfolders with results.txt files.")
     args = parser.parse_args()
 
-    all_iterations, run_metrics_base, run_metrics_final = extract_metrics(args.base_dir)
-    save_results(args.base_dir, all_iterations, run_metrics_base, run_metrics_final)
+    # Extract metrics and calculate means and stds
+    iter_psnrs, iter_lpipss, iter_ssims, iter_mssims, iter_l1s, iter_psnr_stds, iter_lpips_stds, iter_ssim_stds, iter_mssim_stds, iter_l1_stds = extract_metrics(args.base_dir)
+
+    # Save all values and mean/std results to a file
+    save_results(args.base_dir, iter_psnrs, iter_lpipss, iter_ssims, iter_mssims, iter_l1s, iter_psnr_stds, iter_lpips_stds, iter_ssim_stds, iter_mssim_stds, iter_l1_stds)

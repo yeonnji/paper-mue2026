@@ -3,7 +3,7 @@
 # GRAPHDECO research group, https://team.inria.fr/graphdeco
 # All rights reserved.
 #
-# This software is free for non-commercial, research and evaluation use
+# This software is free for non-commercial, research and evaluation use 
 # under the terms of the LICENSE.md file.
 #
 # For inquiries contact  george.drettakis@inria.fr
@@ -25,7 +25,7 @@ class ParamGroup:
                 shorthand = True
                 key = key[1:]
             t = type(value)
-            value = value if not fill_none else None
+            value = value if not fill_none else None 
             if shorthand:
                 if t == bool:
                     group.add_argument("--" + key, ("-" + key[0:1]), default=value, action="store_true")
@@ -44,7 +44,7 @@ class ParamGroup:
                 setattr(group, arg[0], arg[1])
         return group
 
-class ModelParams(ParamGroup):
+class ModelParams(ParamGroup): 
     def __init__(self, parser, sentinel=False):
         self.sh_degree = 3
         self._source_path = ""
@@ -71,49 +71,9 @@ class PipelineParams(ParamGroup):
         self.antialiasing = False
         super().__init__(parser, "Pipeline Parameters")
 
-class SpecularParams(ParamGroup):
-    def __init__(self, parser):
-        # Master toggle
-        self.use_specular_branch = False
-        # Light latent (pose-based MLP output dimension)
-        self.spec_latent_dim = 8
-        # Network
-        self.spec_hidden_dim = 32
-        self.spec_gain = 0.5
-        # Loss weights
-        self.lambda_prior = 0.05
-        self.lambda_sparse = 0.0
-        self.lambda_tv = 0.005
-        self.lambda_z = 1e-4
-        # Residual-target loss weight (direct spec_rgb vs residual supervision)
-        self.lambda_spec_res = 1.0
-        # Prior-weighted residual emphasis (alpha in weight_map = 1 + alpha * prior)
-        self.spec_res_prior_alpha = 2.0
-        # Final RGB reconstruction loss (L1 + SSIM on base+spec vs GT)
-        self.lambda_final = 1.0
-        self.lambda_dssim_spec = 0.2
-        # Prior
-        self.spec_prior_gamma = 1.0
-        # Learning rate
-        self.spec_lr = 1e-3
-        self.spec_pose_lr = 1e-3
-        # Training schedule: "joint" or "staged"
-        self.spec_schedule = "joint"
-        # Iteration at which specular branch activates (default: after densification)
-        self.spec_start_iter = 3000
-        # For staged schedule: scale Gaussian LR by this factor after densify_until_iter
-        self.staged_gauss_lr_scale = 0.1
-        # Loss masking: w = (1 - alpha * prior).clamp(min=clamp_min)
-        # Applied from iteration 0 to prevent specular baked-in
-        self.base_mask_alpha = 0.9
-        self.base_mask_clamp_min = 0.1
-        # Visualisation frequency (save debug images every N iters, 0=off)
-        self.spec_vis_interval = 1000
-        super().__init__(parser, "Specular Parameters")
-
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
-        self.iteration = 30_000
+        self.iterations = 30_000
         self.position_lr_init = 0.00016
         self.position_lr_final = 0.0000016
         self.position_lr_delay_mult = 0.01
